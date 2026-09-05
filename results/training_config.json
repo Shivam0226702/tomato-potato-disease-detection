@@ -1,0 +1,23 @@
+{
+  "model": "EfficientNet-B0",
+  "pretrained": "ImageNet",
+  "image_size": 224,
+  "batch_size": 32,
+  "learning_rate": 0.001,
+  "weight_decay": 0.0001,
+  "optimizer": "AdamW",
+  "scheduler": "ReduceLROnPlateau",
+  "loss": "CrossEntropyLoss",
+  "epochs_requested": 1,
+  "epochs_completed": 1,
+  "best_epoch": 1,
+  "best_val_accuracy": 0.9767184035476718,
+  "early_stop_patience": 7,
+  "seed": 42,
+  "device": "cpu",
+  "gpu_name": null,
+  "training_seconds": 1078.02,
+  "num_train": 4211,
+  "num_val": 902,
+  "num_test": 903
+}

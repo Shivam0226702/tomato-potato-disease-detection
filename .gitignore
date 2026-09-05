@@ -1,0 +1,17 @@
+# Dataset - do NOT upload images
+Dataset/
+
+# Trained model files - do NOT upload large checkpoints
+results/*.pth
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environments
+venv/
+.venv/
+
+# IDE/system files
+.vscode/
+.idea/
