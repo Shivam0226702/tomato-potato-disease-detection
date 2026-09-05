@@ -293,7 +293,7 @@ def main():
     if torch.cuda.is_available():
         device   = torch.device("cuda")
         gpu_name = torch.cuda.get_device_name(0)
-        gpu_mem  = torch.cuda.get_device_properties(0).total_mem / (1024 ** 3)
+        gpu_mem  = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
         print(f"\n[Device]  CUDA  —  {gpu_name}  ({gpu_mem:.1f} GB)")
     else:
         device   = torch.device("cpu")
@@ -465,6 +465,9 @@ def main():
     print(f"  Best epoch:          {best_epoch}")
     print(f"  Best val accuracy:   {100 * best_val_acc:.2f}%")
     print(f"  Time elapsed:        {elapsed:.1f}s")
+    if torch.cuda.is_available():
+        peak_mb = torch.cuda.max_memory_allocated(device) / (1024 ** 2)
+        print(f"  Peak GPU memory:     {peak_mb:.1f} MB / {gpu_mem * 1024:.0f} MB")
     print(f"  Results saved to:    {RESULTS_DIR}")
     print(f"{'=' * 60}")
 
