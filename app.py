@@ -36,6 +36,9 @@ from database import (
     DEFAULT_DB_PATH,
 )
 
+# Import modular agricultural query engine
+from query_engine import answer_query
+
 # ═══════════════════════════════════════════════════════════════════════
 #  PAGE CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════
@@ -147,6 +150,7 @@ def render_sidebar():
             """
             * 🔬 **Leaf Diagnosis:** Upload and analyze leaf photographs.
             * 📜 **Scan History:** Review saved diagnostic records.
+            * 💬 **Ask PlantCare:** Ask questions about tomato & potato disease management.
             """
         )
         st.divider()
@@ -551,6 +555,79 @@ def render_history_view():
 
 
 # ═══════════════════════════════════════════════════════════════════════
+#  FARMER QUERY VIEW (💬 ASK PLANTCARE)
+# ═══════════════════════════════════════════════════════════════════════
+
+def render_query_view():
+    """Render farmer question/answer feature for Tomato & Potato plant health."""
+    st.subheader("💬 Ask PlantCare")
+    st.markdown("Ask agricultural and management questions about your **Tomato** or **Potato** crops.")
+
+    # 1. Active scan context indicator
+    active_analysis = st.session_state.get("current_analysis")
+    if active_analysis is not None:
+        crop = active_analysis["crop"]
+        disease = active_analysis["disease"]
+        severity = active_analysis["severity_level"]
+        crop_icon = "🍅" if crop.lower() == "tomato" else "🥔"
+        st.info(
+            f"🌱 **Active Leaf Diagnosis Context:** {crop_icon} {crop} — **{disease}** ({severity} severity)  \n"
+            f"You can ask follow-up questions directly, such as *\"What should I do now?\"* or *\"What spray should I use?\"*."
+        )
+    else:
+        st.markdown(
+            """
+            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 0.6rem 0.9rem; margin-bottom: 0.75rem;">
+                <small style="color: #718096;">💡 <i>Tip: Scan a leaf in the <b>Leaf Diagnosis</b> tab to enable context-aware questions like "What should I do now?".</i></small>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # 2. Example Questions
+    st.markdown("**Sample Questions:**")
+    ex_col1, ex_col2 = st.columns(2)
+    sample_queries = [
+        "What is tomato early blight?",
+        "How can I prevent late blight?",
+        "What should I do if my tomato has early blight?",
+        "How does early blight spread?",
+        "What should I do for moderate potato late blight?",
+    ]
+
+    for i, q_text in enumerate(sample_queries):
+        target_col = ex_col1 if i % 2 == 0 else ex_col2
+        with target_col:
+            if st.button(f"👉 {q_text}", key=f"btn_ex_q_{i}", use_container_width=True):
+                st.session_state["pending_query"] = q_text
+
+    # 3. Query Form
+    default_text = st.session_state.pop("pending_query", "")
+
+    with st.form(key="plantcare_query_form", clear_on_submit=False):
+        user_question = st.text_input(
+            "Enter your question:",
+            value=default_text,
+            placeholder="e.g., What should I do for moderate potato late blight? or What should I do now?",
+            key="plantcare_query_input",
+        )
+        submitted = st.form_submit_button("🔍 Ask PlantCare", type="primary", use_container_width=True)
+
+    # 4. Process Question
+    active_q = user_question.strip() if submitted else default_text.strip()
+    if active_q:
+        with st.spinner("Retrieving agricultural guidance..."):
+            res = answer_query(active_q, context=active_analysis)
+
+        with st.container():
+            st.markdown('<div class="result-card">', unsafe_allow_html=True)
+            st.markdown(f"**Question Asked:** *{active_q}*")
+            st.divider()
+            st.markdown(res["answer"])
+            st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 #  MAIN ENTRYPOINT
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -587,13 +664,16 @@ def main():
     render_sidebar()
 
     # Navigation Tabs
-    tab_diagnose, tab_history = st.tabs(["🔬 Leaf Diagnosis", "📜 Scan History"])
+    tab_diagnose, tab_history, tab_qa = st.tabs(["🔬 Leaf Diagnosis", "📜 Scan History", "💬 Ask PlantCare"])
 
     with tab_diagnose:
         render_diagnosis_view(model, class_names, device)
 
     with tab_history:
         render_history_view()
+
+    with tab_qa:
+        render_query_view()
 
 
 if __name__ == "__main__":
