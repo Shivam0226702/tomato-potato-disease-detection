@@ -22,6 +22,9 @@ from predict import (
 # Import modular image-based severity estimation
 from severity import estimate_disease_severity
 
+# Import modular treatment and spray decision engine
+from treatment import get_treatment_recommendation
+
 # ═══════════════════════════════════════════════════════════════════════
 #  PAGE CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════
@@ -321,8 +324,61 @@ def main():
                 st.markdown(f'<div class="disclaimer-text">{disclaimer}</div>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
+            # ── 6. Treatment Recommendation ────────────────────────────
+            st.divider()
+            st.markdown("### 🌾 Treatment Recommendation")
+
+            rec = get_treatment_recommendation(
+                crop=crop,
+                disease=disease,
+                severity=severity_level,
+            )
+
+            # Disease & Estimated Severity Overview
+            st.markdown(
+                f"""
+                <div class="result-card">
+                    <p style="margin: 0; font-size: 1rem; color: #2D3748;">
+                        <b>Disease:</b> {rec.crop} {rec.disease}<br>
+                        <b>Estimated severity:</b> {rec.severity}
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            # Recommended Action
+            st.markdown("#### Recommended action:")
+            if is_healthy:
+                st.success(rec.recommended_action)
+            elif severity_level == "Mild":
+                st.info(rec.recommended_action)
+            elif severity_level == "Moderate":
+                st.warning(rec.recommended_action)
+            elif severity_level == "Severe":
+                st.error(rec.recommended_action)
+            else:
+                st.info(rec.recommended_action)
+
+            # Management (Cultural / Sanitation / Monitoring)
+            st.markdown("#### Management:")
+            for practice in rec.management_practices:
+                st.markdown(f"- {practice}")
+
+            # Treatment (General Categories & Extension Guidance)
+            st.markdown("#### Treatment:")
+            st.markdown(rec.treatment_guidance)
+
+            # Professional Advisory Expander
+            with st.expander("ℹ️ When to Seek Professional / Extension Advice"):
+                st.markdown(rec.professional_advice)
+
+            # Educational Disclaimer
+            st.markdown(f'<div class="disclaimer-text">{rec.disclaimer}</div>', unsafe_allow_html=True)
+
             # Option to test another image
             st.info("💡 To check another leaf, click **'Analyze Another Leaf'** above or choose a new file.")
+
 
     else:
         st.info("👆 Select a leaf image above to begin diagnosis.")
