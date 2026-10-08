@@ -180,7 +180,7 @@ def answer_query(question: str, context: Optional[Dict[str, Any]] = None) -> Dic
             crop = context["crop"]
             disease = context["disease"]
             confidence = context.get("confidence", 0.0)
-            severity = context.get("severity_level", "Uncertain")
+            severity = context.get("severity") or context.get("severity_level") or "Not available"
             rec = context.get("treatment_rec")
 
             ans_lines = [

@@ -36,6 +36,7 @@ SEVERITY_LOSS_FACTORS: Dict[str, Dict[str, float]] = {
         "Moderate": 0.0,
         "Severe": 0.0,
         "Uncertain": 0.0,
+        "Not available": 0.0,
     },
     "Early Blight": {
         "None (Healthy)": 0.0,
@@ -43,6 +44,7 @@ SEVERITY_LOSS_FACTORS: Dict[str, Dict[str, float]] = {
         "Moderate": 0.30,   # 30% estimated potential loss
         "Severe": 0.55,     # 55% estimated potential loss
         "Uncertain": 0.25,  # 25% default assumption
+        "Not available": 0.25,  # 25% default assumption when severity not available
     },
     "Late Blight": {
         "None (Healthy)": 0.0,
@@ -50,6 +52,7 @@ SEVERITY_LOSS_FACTORS: Dict[str, Dict[str, float]] = {
         "Moderate": 0.50,   # 50% estimated potential loss
         "Severe": 0.80,     # 80% estimated potential loss (critical vine collapse)
         "Uncertain": 0.45,  # 45% default assumption
+        "Not available": 0.45,  # 45% default assumption when severity not available
     },
 }
 
@@ -64,6 +67,7 @@ IMPACT_CATEGORIES: Dict[str, Dict[str, str]] = {
         "Moderate": "Moderate Impact (-30%)",
         "Severe": "High Impact (-55%)",
         "Uncertain": "Estimated Moderate (-25%)",
+        "Not available": "Estimated Moderate (-25%)",
         "default": "Moderate Impact",
     },
     "Late Blight": {
@@ -71,13 +75,14 @@ IMPACT_CATEGORIES: Dict[str, Dict[str, str]] = {
         "Moderate": "High Impact (-50%)",
         "Severe": "Critical Impact (-80%)",
         "Uncertain": "Estimated High (-45%)",
+        "Not available": "Estimated High (-45%)",
         "default": "High Impact",
     },
 }
 
 YIELD_DISCLAIMER = (
-    "Yield is an estimated prototype value based on crop, disease and severity assumptions. "
-    "Actual yield depends on variety, weather, soil, irrigation, farm management and other factors. "
+    "Prototype estimate based on an assumed healthy baseline and disease-severity impact factors. "
+    "Actual yield impact varies with crop variety, weather, soil, irrigation, farm management, and disease progression. "
     "This should not be treated as a guaranteed harvest prediction."
 )
 
@@ -102,6 +107,26 @@ class YieldEstimateResult:
     impact_category: str
     disclaimer: str
 
+    @property
+    def estimated_yield_kg_per_unit(self) -> float:
+        """Estimated yield per unit in kilograms (1 metric ton = 1,000 kg)."""
+        return round(self.estimated_yield_per_unit * 1000.0)
+
+    @property
+    def estimated_total_yield_kg(self) -> float:
+        """Estimated total harvest in kilograms (1 metric ton = 1,000 kg)."""
+        return round(self.estimated_total_yield * 1000.0)
+
+    @property
+    def range_min_kg(self) -> float:
+        """Estimated minimum expected harvest range in kilograms."""
+        return round(self.range_min * 1000.0)
+
+    @property
+    def range_max_kg(self) -> float:
+        """Estimated maximum expected harvest range in kilograms."""
+        return round(self.range_max * 1000.0)
+
 
 def normalize_disease_name(disease: str) -> str:
     """Normalize input disease string to 'Healthy', 'Early Blight', or 'Late Blight'."""
@@ -115,20 +140,27 @@ def normalize_disease_name(disease: str) -> str:
     return "Healthy"
 
 
-def normalize_severity_name(severity: str) -> str:
+def normalize_severity_name(severity: Optional[str]) -> str:
     """Normalize severity level string."""
-    s = severity.strip().capitalize()
-    if "Mild" in s:
+    if not severity or not str(severity).strip():
+        return "Not available"
+    s = str(severity).strip()
+    s_lower = s.lower()
+    if "mild" in s_lower:
         return "Mild"
-    elif "Moderate" in s:
+    elif "moderate" in s_lower:
         return "Moderate"
-    elif "Severe" in s:
+    elif "severe" in s_lower:
         return "Severe"
-    elif "None" in s or "Healthy" in s:
+    elif "healthy" in s_lower:
         return "None (Healthy)"
-    elif "Uncertain" in s:
+    elif "not available" in s_lower or s_lower in ("n/a", "na", "unknown"):
+        return "Not available"
+    elif "uncertain" in s_lower:
         return "Uncertain"
-    return "Moderate"
+    elif "none" in s_lower:
+        return "None (Healthy)"
+    return s
 
 
 def calculate_yield_estimate(
