@@ -262,7 +262,8 @@ def main():
                 status_label = "Healthy" if is_healthy else disease
                 st.metric(label="Disease Detected", value=status_label)
             with m3:
-                st.metric(label="Diagnostic Confidence", value=f"{confidence:.1f}%")
+                st.metric(label="Prediction Confidence", value=f"{confidence:.1f}%")
+                st.caption("Confidence indicates the model's prediction score and does not guarantee real-world diagnostic certainty.")
             with m4:
                 # Severity metric display with clean badge
                 if is_healthy:
