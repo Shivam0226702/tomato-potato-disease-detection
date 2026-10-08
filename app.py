@@ -2,7 +2,8 @@
 """
 app.py — Farmer-Facing Plant Health Diagnostic Assistant.
 
-A clean, modern web interface for diagnosing Tomato and Potato leaf diseases.
+A clean, modern web interface for diagnosing Tomato and Potato leaf diseases
+and estimating visible disease severity.
 """
 
 from pathlib import Path
@@ -17,6 +18,9 @@ from predict import (
     predict_image,
     RESULTS_DIR,
 )
+
+# Import modular image-based severity estimation
+from severity import estimate_disease_severity
 
 # ═══════════════════════════════════════════════════════════════════════
 #  PAGE CONFIGURATION
@@ -45,9 +49,9 @@ st.markdown(
         margin-bottom: 1.5rem;
     }
     .result-card {
-        padding: 1.2rem;
+        padding: 1.25rem;
         border-radius: 10px;
-        background-color: #F7FAFC;
+        background-color: #F8FAFC;
         border: 1px solid #E2E8F0;
         margin-top: 1rem;
         margin-bottom: 1rem;
@@ -55,12 +59,33 @@ st.markdown(
     .status-healthy {
         color: #22543D;
         font-weight: 700;
-        font-size: 1.3rem;
+        font-size: 1.25rem;
     }
-    .status-disease {
-        color: #742A2A;
+    .status-mild {
+        color: #B7791F;
         font-weight: 700;
-        font-size: 1.3rem;
+        font-size: 1.25rem;
+    }
+    .status-moderate {
+        color: #C05621;
+        font-weight: 700;
+        font-size: 1.25rem;
+    }
+    .status-severe {
+        color: #9B2C2C;
+        font-weight: 700;
+        font-size: 1.25rem;
+    }
+    .status-uncertain {
+        color: #4A5568;
+        font-weight: 700;
+        font-size: 1.25rem;
+    }
+    .disclaimer-text {
+        font-size: 0.82rem;
+        color: #718096;
+        font-style: italic;
+        margin-top: 0.75rem;
     }
     </style>
     """,
@@ -98,7 +123,7 @@ def render_sidebar():
             Welcome to the **Plant Leaf Health Diagnostic Tool**.
             
             This application helps growers identify potential crop diseases 
-            from leaf photographs.
+            from leaf photographs and estimates the visual extent of damage.
             """
         )
         st.divider()
@@ -133,7 +158,7 @@ def main():
     # Header & Description
     st.markdown('<div class="main-header">🌿 CropHealth Assistant</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="sub-header">Upload a leaf photo of a tomato or potato plant for an instant health diagnosis.</div>',
+        '<div class="sub-header">Upload a leaf photo of a tomato or potato plant for an instant health diagnosis and visual severity estimate.</div>',
         unsafe_allow_html=True,
     )
 
@@ -147,6 +172,7 @@ def main():
     render_sidebar()
 
     # ── 1. Image Upload ───────────────────────────────────────────────
+    st.subheader("1. Upload Leaf Image")
     uploaded_file = st.file_uploader(
         "Upload a leaf photo:",
         type=["jpg", "jpeg", "png", "webp"],
@@ -181,8 +207,9 @@ def main():
             st.rerun()
 
         if analyze_clicked:
-            with st.spinner("Diagnosing leaf condition..."):
+            with st.spinner("Diagnosing leaf condition and estimating severity..."):
                 try:
+                    # 1. Primary Disease Classification (Inference)
                     uploaded_file.seek(0)
                     result = predict_image(
                         uploaded_file,
@@ -190,6 +217,13 @@ def main():
                         class_names=class_names,
                         device=device,
                         top_k=3,
+                    )
+
+                    # 2. Separate Image-Based Severity Estimation
+                    uploaded_file.seek(0)
+                    severity_result = estimate_disease_severity(
+                        uploaded_file,
+                        condition=result["disease"],
                     )
                 except Exception:
                     st.error("❌ An error occurred during diagnosis. Please try another image.")
@@ -199,6 +233,12 @@ def main():
             disease = result["disease"]
             confidence = result["confidence"] * 100.0
             is_healthy = disease.lower() == "healthy"
+
+            severity_level = severity_result["severity_level"]
+            affected_pct = severity_result["affected_percentage"]
+            is_reliable = severity_result["is_reliable"]
+            sev_explanation = severity_result["explanation"]
+            disclaimer = severity_result["disclaimer"]
 
             # ── 4. Diagnosis Result ────────────────────────────────────
             st.divider()
@@ -211,41 +251,74 @@ def main():
             else:
                 st.warning(f"⚠️ **Condition Identified:** {crop} leaf exhibiting symptoms of **{disease}**.")
 
-            # Summary Metrics
-            m1, m2, m3 = st.columns(3)
+            # Summary Metrics (4 clean columns)
+            m1, m2, m3, m4 = st.columns(4)
             with m1:
                 st.metric(label="Crop Identified", value=f"{crop_icon} {crop}")
             with m2:
                 status_label = "Healthy" if is_healthy else disease
-                st.metric(label="Condition", value=status_label)
+                st.metric(label="Disease Detected", value=status_label)
             with m3:
                 st.metric(label="Diagnostic Confidence", value=f"{confidence:.1f}%")
+            with m4:
+                # Severity metric display with clean badge
+                if is_healthy:
+                    sev_display = "🟢 None"
+                elif severity_level == "Mild":
+                    sev_display = "🟡 Mild"
+                elif severity_level == "Moderate":
+                    sev_display = "🟠 Moderate"
+                elif severity_level == "Severe":
+                    sev_display = "🔴 Severe"
+                else:
+                    sev_display = "⚪ Uncertain"
+                st.metric(label="Estimated Severity", value=sev_display)
 
-            # Basic Information Card
+            # ── 5. Detailed Health & Severity Information Card ─────────
             with st.container():
                 st.markdown('<div class="result-card">', unsafe_allow_html=True)
+                
                 if is_healthy:
                     st.markdown(
                         f"""
-                        <div class="status-healthy">🌿 Healthy {crop} Leaf</div>
+                        <div class="status-healthy">🌿 Healthy {crop} Foliage</div>
                         <p style="margin-top: 0.5rem; color: #4A5568;">
-                        The leaf exhibits normal pigmentation and texture without visible fungal blight lesions. 
+                        The leaf exhibits normal green coloration and texture without visible fungal blight lesions. 
                         Continue standard crop care and regular monitoring.
                         </p>
                         """,
                         unsafe_allow_html=True,
                     )
                 else:
+                    # Class for severity styling
+                    status_class = (
+                        "status-mild" if severity_level == "Mild"
+                        else "status-moderate" if severity_level == "Moderate"
+                        else "status-severe" if severity_level == "Severe"
+                        else "status-uncertain"
+                    )
+
                     st.markdown(
                         f"""
-                        <div class="status-disease">⚠️ {crop} — {disease}</div>
+                        <div class="{status_class}">⚠️ {crop} — {disease} ({severity_level} Severity)</div>
                         <p style="margin-top: 0.5rem; color: #4A5568;">
-                        Symptoms consistent with <b>{disease}</b> were identified with <b>{confidence:.1f}%</b> confidence.
-                        Ensure adequate plant spacing, avoid overhead watering, and inspect neighboring plants.
+                        {sev_explanation}
                         </p>
                         """,
                         unsafe_allow_html=True,
                     )
+
+                    # Visual progress bar of estimated affected leaf surface (if quantifiable)
+                    if affected_pct is not None and is_reliable:
+                        st.markdown(f"**Estimated Leaf Discoloration Area:** `{affected_pct:.1f}%` of visible leaf")
+                        progress_val = min(max(affected_pct / 100.0, 0.0), 1.0)
+                        st.progress(progress_val)
+
+                    if not is_reliable:
+                        st.info("ℹ️ Note: Exact severity percentage could not be determined due to background interference.")
+
+                # Transparent agricultural disclaimer
+                st.markdown(f'<div class="disclaimer-text">{disclaimer}</div>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
             # Option to test another image
