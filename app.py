@@ -39,6 +39,9 @@ from database import (
 # Import modular agricultural query engine
 from query_engine import answer_query
 
+# Import modular prototype yield estimator
+from yield_estimator import calculate_yield_estimate, YIELD_DISCLAIMER
+
 # ═══════════════════════════════════════════════════════════════════════
 #  PAGE CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════
@@ -149,6 +152,7 @@ def render_sidebar():
         st.markdown(
             """
             * 🔬 **Leaf Diagnosis:** Upload and analyze leaf photographs.
+            * 🌾 **Yield Estimation:** Prototype crop yield and disease impact estimation.
             * 📜 **Scan History:** Review saved diagnostic records.
             * 💬 **Ask PlantCare:** Ask questions about tomato & potato disease management.
             """
@@ -416,7 +420,70 @@ def render_diagnosis_view(model, class_names, device):
 
             st.markdown(f'<div class="disclaimer-text">{rec.disclaimer}</div>', unsafe_allow_html=True)
 
-            # ── 7. Save Analysis to Database ───────────────────────────
+            # ── 7. Yield Estimation (Prototype) ────────────────────────
+            st.divider()
+            st.markdown("### 🌾 Yield Estimation (Prototype)")
+            st.caption("Estimated crop yield based on baseline agronomic assumptions and detected disease impact.")
+
+            col_area, col_unit = st.columns([2, 1])
+            with col_area:
+                cultivated_area = st.number_input(
+                    "Cultivated Area:",
+                    min_value=0.1,
+                    max_value=10000.0,
+                    value=1.5 if crop.lower() == "tomato" and disease.lower() != "healthy" else 1.0,
+                    step=0.5,
+                    format="%.1f",
+                    key="diag_cultivated_area",
+                    help="Enter your cultivated plot or field size.",
+                )
+            with col_unit:
+                area_unit = st.selectbox(
+                    "Unit:",
+                    options=["acre", "hectare"],
+                    index=0,
+                    key="diag_area_unit",
+                )
+
+            # Compute yield estimation using active scan context
+            yield_res = calculate_yield_estimate(
+                crop=crop,
+                cultivated_area=cultivated_area,
+                area_unit=area_unit,
+                disease=disease,
+                severity=severity_level,
+            )
+
+            with st.container():
+                st.markdown('<div class="result-card">', unsafe_allow_html=True)
+                st.markdown(
+                    f"""
+                    <p style="margin: 0; font-size: 0.95rem; color: #2D3748;">
+                        <b>Crop:</b> {yield_res.crop} &nbsp;|&nbsp; 
+                        <b>Cultivated Area:</b> {yield_res.cultivated_area} {yield_res.area_unit}(s) &nbsp;|&nbsp; 
+                        <b>Condition:</b> {yield_res.disease} &nbsp;|&nbsp; 
+                        <b>Severity:</b> {yield_res.severity}
+                    </p>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                st.write("")
+
+                y1, y2, y3, y4 = st.columns(4)
+                with y1:
+                    unit_label = f"tons/{yield_res.area_unit}"
+                    st.metric(label=f"Estimated Yield ({unit_label})", value=f"{yield_res.estimated_yield_per_unit:.1f} {unit_label}")
+                with y2:
+                    st.metric(label="Estimated Total Yield", value=f"{yield_res.estimated_total_yield:.1f} tons")
+                with y3:
+                    st.metric(label="Expected Range", value=f"{yield_res.range_min:.1f} – {yield_res.range_max:.1f} tons")
+                with y4:
+                    st.metric(label="Disease Impact", value=yield_res.impact_category)
+
+                st.markdown(f'<div class="disclaimer-text">{yield_res.disclaimer}</div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            # ── 8. Save Analysis to Database ───────────────────────────
             st.divider()
             st.markdown("### 💾 Save Scan Record")
 
@@ -430,6 +497,12 @@ def render_diagnosis_view(model, class_names, device):
                         f"Action: {rec.recommended_action}\n\n"
                         f"Treatment: {rec.treatment_guidance}"
                     )
+                    yield_notes = (
+                        f"Estimated total yield: {yield_res.estimated_total_yield:.1f} tons "
+                        f"({yield_res.estimated_yield_per_unit:.1f} tons/{yield_res.area_unit}) "
+                        f"on {yield_res.cultivated_area:.1f} {yield_res.area_unit}(s). "
+                        f"Impact: {yield_res.impact_category}."
+                    )
                     new_scan_id = save_scan(
                         crop=crop,
                         disease=disease,
@@ -437,6 +510,7 @@ def render_diagnosis_view(model, class_names, device):
                         severity=severity_level,
                         affected_area_percentage=affected_pct,
                         treatment_summary=treatment_summary_text,
+                        notes=yield_notes,
                     )
                     st.session_state.is_saved = True
                     st.session_state.saved_scan_id = new_scan_id
@@ -628,6 +702,153 @@ def render_query_view():
 
 
 # ═══════════════════════════════════════════════════════════════════════
+#  YIELD ESTIMATION VIEW (🌾 YIELD ESTIMATION)
+# ═══════════════════════════════════════════════════════════════════════
+
+def render_yield_view():
+    """Render interactive crop yield estimation dashboard with context carryover or manual simulation."""
+    st.subheader("🌾 Crop Yield Estimation (Prototype)")
+    st.markdown("Estimate expected harvest yield and potential disease impacts for **Tomato** and **Potato** crops.")
+
+    # 1. Active Scan Context Carryover
+    active_analysis = st.session_state.get("current_analysis")
+    if active_analysis is not None:
+        active_crop = active_analysis["crop"]
+        active_disease = active_analysis["disease"]
+        active_severity = active_analysis["severity_level"]
+        crop_icon = "🍅" if active_crop.lower() == "tomato" else "🥔"
+        st.info(
+            f"🌱 **Active Leaf Scan Carried Over:** {crop_icon} {active_crop} — **{active_disease}** ({active_severity} severity).  \n"
+            f"Values are prefilled from your recent diagnosis. You can adjust the cultivated area or test different scenarios below."
+        )
+        default_crop = active_crop
+        default_disease = active_disease
+        default_sev = active_severity
+    else:
+        st.markdown(
+            """
+            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 0.6rem 0.9rem; margin-bottom: 0.75rem;">
+                <small style="color: #718096;">💡 <i>Tip: Analyzing a leaf in the <b>Leaf Diagnosis</b> tab automatically carries over crop, disease, and severity. You can also simulate scenarios manually below.</i></small>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        default_crop = "Tomato"
+        default_disease = "Healthy"
+        default_sev = "None (Healthy)"
+
+    # 2. Input Controls
+    st.markdown("#### Plot & Crop Parameters")
+    col1, col2 = st.columns(2)
+
+    crop_options = ["Tomato", "Potato"]
+    crop_idx = crop_options.index(default_crop) if default_crop in crop_options else 0
+
+    with col1:
+        selected_crop = st.selectbox(
+            "Crop:",
+            options=crop_options,
+            index=crop_idx,
+            key="yield_view_crop",
+        )
+
+    disease_options = ["Healthy", "Early Blight", "Late Blight"]
+    disease_idx = disease_options.index(default_disease) if default_disease in disease_options else 0
+
+    with col2:
+        selected_disease = st.selectbox(
+            "Disease / Condition:",
+            options=disease_options,
+            index=disease_idx,
+            key="yield_view_disease",
+        )
+
+    col3, col4 = st.columns(2)
+    with col3:
+        if selected_disease == "Healthy":
+            selected_sev = "None (Healthy)"
+            st.selectbox("Estimated Severity:", options=["None (Healthy)"], index=0, disabled=True, key="yield_view_sev_disabled")
+        else:
+            sev_options = ["Mild", "Moderate", "Severe"]
+            norm_active_sev = default_sev if default_sev in sev_options else "Moderate"
+            sev_idx = sev_options.index(norm_active_sev) if norm_active_sev in sev_options else 1
+            selected_sev = st.selectbox(
+                "Estimated Severity:",
+                options=sev_options,
+                index=sev_idx,
+                key="yield_view_sev",
+            )
+
+    with col4:
+        sub_col_a, sub_col_u = st.columns([2, 1])
+        with sub_col_a:
+            area_val = st.number_input(
+                "Cultivated Area:",
+                min_value=0.1,
+                max_value=10000.0,
+                value=1.5 if selected_crop == "Tomato" and selected_disease != "Healthy" else 1.0,
+                step=0.5,
+                format="%.1f",
+                key="yield_view_area",
+            )
+        with sub_col_u:
+            unit_val = st.selectbox(
+                "Unit:",
+                options=["acre", "hectare"],
+                index=0,
+                key="yield_view_unit",
+            )
+
+    # 3. Calculate Estimate
+    result = calculate_yield_estimate(
+        crop=selected_crop,
+        cultivated_area=area_val,
+        area_unit=unit_val,
+        disease=selected_disease,
+        severity=selected_sev,
+    )
+
+    # 4. Display Results
+    st.divider()
+    st.markdown("#### 📊 Yield Estimation Result")
+
+    with st.container():
+        st.markdown('<div class="result-card">', unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <p style="margin: 0; font-size: 0.95rem; color: #2D3748;">
+                <b>Crop:</b> {result.crop} &nbsp;|&nbsp; 
+                <b>Cultivated Area:</b> {result.cultivated_area} {result.area_unit}(s) &nbsp;|&nbsp; 
+                <b>Condition:</b> {result.disease} &nbsp;|&nbsp; 
+                <b>Severity:</b> {result.severity}
+            </p>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.write("")
+
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            u_label = f"tons/{result.area_unit}"
+            st.metric(label=f"Estimated Yield ({u_label})", value=f"{result.estimated_yield_per_unit:.1f} {u_label}")
+        with m2:
+            st.metric(label="Estimated Total Yield", value=f"{result.estimated_total_yield:.1f} tons")
+        with m3:
+            st.metric(label="Expected Range", value=f"{result.range_min:.1f} – {result.range_max:.1f} tons")
+        with m4:
+            st.metric(label="Disease Impact", value=result.impact_category)
+
+        st.caption(
+            f"ℹ️ Assumed healthy baseline: **{result.baseline_yield_per_acre:.1f} tons/acre** "
+            f"({result.baseline_yield_per_acre * 2.47105:.1f} tons/hectare). "
+            f"Estimated potential yield reduction from {result.disease} ({result.severity}): **{result.loss_percentage:.0f}%**."
+        )
+
+        st.markdown(f'<div class="disclaimer-text">{result.disclaimer}</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 #  MAIN ENTRYPOINT
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -664,10 +885,18 @@ def main():
     render_sidebar()
 
     # Navigation Tabs
-    tab_diagnose, tab_history, tab_qa = st.tabs(["🔬 Leaf Diagnosis", "📜 Scan History", "💬 Ask PlantCare"])
+    tab_diagnose, tab_yield, tab_history, tab_qa = st.tabs([
+        "🔬 Leaf Diagnosis",
+        "🌾 Yield Estimation",
+        "📜 Scan History",
+        "💬 Ask PlantCare",
+    ])
 
     with tab_diagnose:
         render_diagnosis_view(model, class_names, device)
+
+    with tab_yield:
+        render_yield_view()
 
     with tab_history:
         render_history_view()
