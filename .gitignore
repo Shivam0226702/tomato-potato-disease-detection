@@ -15,3 +15,16 @@ venv/
 # IDE/system files
 .vscode/
 .idea/
+
+# Environment files & Secrets (NEVER commit)
+.env
+.env.txt
+*.env.txt
+.env.local
+.env.*.local
+*.env
+!.env.example
+
+# Frontend build & dependencies
+frontend/node_modules/
+frontend/.vite/

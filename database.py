@@ -57,6 +57,27 @@ def init_db(db_path: Union[str, Path] = DEFAULT_DB_PATH) -> None:
             );
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS field_inspections (
+                inspection_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                latitude REAL NOT NULL,
+                longitude REAL NOT NULL,
+                gps_accuracy REAL NOT NULL,
+                image_url TEXT NOT NULL,
+                overlay_image_url TEXT,
+                field_name TEXT,
+                notes TEXT,
+                crop TEXT,
+                disease TEXT,
+                prediction_confidence REAL,
+                severity TEXT,
+                affected_area_percentage REAL,
+                treatment_summary TEXT
+            );
+            """
+        )
         conn.commit()
 
 
@@ -228,3 +249,206 @@ def clear_history(db_path: Union[str, Path] = DEFAULT_DB_PATH) -> bool:
             pass
         conn.commit()
         return True
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  GEOSPATIAL FIELD INSPECTIONS
+# ═══════════════════════════════════════════════════════════════════════
+
+def save_inspection_record(
+    latitude: float,
+    longitude: float,
+    gps_accuracy: float,
+    image_url: str,
+    overlay_image_url: Optional[str] = None,
+    field_name: str = "",
+    notes: str = "",
+    crop: Optional[str] = None,
+    disease: Optional[str] = None,
+    prediction_confidence: Optional[float] = None,
+    severity: Optional[str] = None,
+    affected_area_percentage: Optional[float] = None,
+    treatment_summary: Optional[str] = None,
+    timestamp: Optional[str] = None,
+    db_path: Union[str, Path] = DEFAULT_DB_PATH,
+) -> int:
+    """Save a geospatial field inspection record to SQLite.
+
+    Returns:
+        int: The newly created inspection_id.
+    """
+    init_db(db_path)
+
+    if timestamp is None:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with db_session(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO field_inspections (
+                timestamp,
+                latitude,
+                longitude,
+                gps_accuracy,
+                image_url,
+                overlay_image_url,
+                field_name,
+                notes,
+                crop,
+                disease,
+                prediction_confidence,
+                severity,
+                affected_area_percentage,
+                treatment_summary
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                timestamp,
+                round(float(latitude), 7),
+                round(float(longitude), 7),
+                round(float(gps_accuracy), 2),
+                image_url,
+                overlay_image_url,
+                field_name or "",
+                notes or "",
+                crop,
+                disease,
+                round(float(prediction_confidence), 2) if prediction_confidence is not None else None,
+                severity,
+                round(float(affected_area_percentage), 2) if affected_area_percentage is not None else None,
+                treatment_summary,
+            ),
+        )
+        conn.commit()
+        return int(cursor.lastrowid)
+
+
+def get_inspection_records(
+    limit: int = 100,
+    db_path: Union[str, Path] = DEFAULT_DB_PATH,
+) -> List[Dict[str, Any]]:
+    """Retrieve field inspection records ordered newest to oldest."""
+    init_db(db_path)
+
+    with db_session(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                inspection_id,
+                timestamp,
+                latitude,
+                longitude,
+                gps_accuracy,
+                image_url,
+                overlay_image_url,
+                field_name,
+                notes,
+                crop,
+                disease,
+                prediction_confidence,
+                severity,
+                affected_area_percentage,
+                treatment_summary
+            FROM field_inspections
+            ORDER BY inspection_id DESC
+            LIMIT ?;
+            """,
+            (limit,),
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_inspection_record_by_id(
+    inspection_id: int,
+    db_path: Union[str, Path] = DEFAULT_DB_PATH,
+) -> Optional[Dict[str, Any]]:
+    """Retrieve details for a single field inspection by its ID."""
+    init_db(db_path)
+
+    with db_session(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                inspection_id,
+                timestamp,
+                latitude,
+                longitude,
+                gps_accuracy,
+                image_url,
+                overlay_image_url,
+                field_name,
+                notes,
+                crop,
+                disease,
+                prediction_confidence,
+                severity,
+                affected_area_percentage,
+                treatment_summary
+            FROM field_inspections
+            WHERE inspection_id = ?;
+            """,
+            (inspection_id,),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row is not None else None
+
+
+def update_inspection_record_diagnosis(
+    inspection_id: int,
+    crop: str,
+    disease: str,
+    prediction_confidence: float,
+    severity: str,
+    affected_area_percentage: Optional[float] = None,
+    treatment_summary: str = "",
+    db_path: Union[str, Path] = DEFAULT_DB_PATH,
+) -> bool:
+    """Update an inspection record with diagnosis results."""
+    init_db(db_path)
+
+    with db_session(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE field_inspections
+            SET
+                crop = ?,
+                disease = ?,
+                prediction_confidence = ?,
+                severity = ?,
+                affected_area_percentage = ?,
+                treatment_summary = ?
+            WHERE inspection_id = ?;
+            """,
+            (
+                crop,
+                disease,
+                round(float(prediction_confidence), 2),
+                severity,
+                round(float(affected_area_percentage), 2) if affected_area_percentage is not None else None,
+                treatment_summary,
+                inspection_id,
+            ),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def delete_inspection_record(
+    inspection_id: int,
+    db_path: Union[str, Path] = DEFAULT_DB_PATH,
+) -> bool:
+    """Delete a single inspection record by its ID."""
+    init_db(db_path)
+
+    with db_session(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM field_inspections WHERE inspection_id = ?;", (inspection_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
